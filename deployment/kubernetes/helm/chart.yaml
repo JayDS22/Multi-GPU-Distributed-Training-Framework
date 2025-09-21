@@ -1,0 +1,27 @@
+
+apiVersion: v2
+name: distributed-training
+description: A Helm chart for distributed PyTorch training on Kubernetes
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - pytorch
+  - distributed-training
+  - machine-learning
+  - deep-learning
+  - gpu
+
+home: https://github.com/yourusername/distributed-training-framework
+sources:
+  - https://github.com/yourusername/distributed-training-framework
+
+maintainers:
+  - name: Your Name
+    email: your.email@example.com
+
+icon: https://pytorch.org/assets/images/pytorch-logo.png
+
+annotations:
+  category: MachineLearning
