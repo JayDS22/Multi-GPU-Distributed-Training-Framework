@@ -1,0 +1,194 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: training-config
+data:
+  training.json: |
+    {
+      "strategy": "ddp",
+      "batch_size": 32,
+      "epochs": 10,
+      "lr": 0.001,
+      "gradient_clip": 1.0,
+      "mixed_precision": true
+    }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: distributed-training-master
+spec:
+  clusterIP: None
+  selector:
+    job: distributed-training
+  ports:
+  - port: 29500
+    name: master
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: distributed-training
+spec:
+  serviceName: distributed-training-master
+  replicas: 4  # Number of worker pods
+  selector:
+    matchLabels:
+      job: distributed-training
+  template:
+    metadata:
+      labels:
+        job: distributed-training
+    spec:
+      restartPolicy: OnFailure
+      
+      # Node selector for GPU nodes
+      nodeSelector:
+        gpu: "true"
+      
+      # Init container to wait for master
+      initContainers:
+      - name: wait-for-master
+        image: busybox:1.28
+        command: ['sh', '-c', 'until nslookup distributed-training-master; do echo waiting for master; sleep 2; done']
+      
+      containers:
+      - name: trainer
+        image: your-registry/distributed-training:latest
+        imagePullPolicy: Always
+        
+        # Resource limits
+        resources:
+          limits:
+            nvidia.com/gpu: 1  # Request 1 GPU per pod
+            memory: "32Gi"
+            cpu: "8"
+          requests:
+            nvidia.com/gpu: 1
+            memory: "16Gi"
+            cpu: "4"
+        
+        # Environment variables for distributed training
+        env:
+        - name: WORLD_SIZE
+          value: "4"  # Total number of GPUs
+        - name: RANK
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['statefulset.kubernetes.io/pod-name']
+        - name: MASTER_ADDR
+          value: "distributed-training-0.distributed-training-master"
+        - name: MASTER_PORT
+          value: "29500"
+        - name: NCCL_DEBUG
+          value: "INFO"
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0"
+        
+        # Command to run
+        command:
+        - python
+        - production_train.py
+        - --strategy=ddp
+        - --batch-size=32
+        - --epochs=10
+        - --mixed-precision
+        - --checkpoint-dir=/mnt/checkpoints
+        
+        # Volume mounts
+        volumeMounts:
+        - name: checkpoint-storage
+          mountPath: /mnt/checkpoints
+        - name: training-config
+          mountPath: /config
+        - name: shm
+          mountPath: /dev/shm
+      
+      volumes:
+      - name: training-config
+        configMap:
+          name: training-config
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+  
+  # Persistent volume for checkpoints
+  volumeClaimTemplates:
+  - metadata:
+      name: checkpoint-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 100Gi
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: distributed-training-job
+spec:
+  parallelism: 4  # Number of parallel workers
+  completions: 4
+  template:
+    metadata:
+      labels:
+        job: distributed-training
+    spec:
+      restartPolicy: OnFailure
+      
+      containers:
+      - name: pytorch-trainer
+        image: your-registry/distributed-training:latest
+        
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: "32Gi"
+        
+        env:
+        - name: WORLD_SIZE
+          value: "4"
+        - name: MASTER_ADDR
+          value: "distributed-training-master"
+        - name: MASTER_PORT
+          value: "29500"
+        
+        command:
+        - sh
+        - -c
+        - |
+          export RANK=$(($(echo $HOSTNAME | grep -o '[0-9]*$')))
+          python production_train.py \
+            --strategy=ddp \
+            --batch-size=32 \
+            --epochs=10 \
+            --mixed-precision \
+            --checkpoint-dir=/mnt/checkpoints
+        
+        volumeMounts:
+        - name: checkpoint-storage
+          mountPath: /mnt/checkpoints
+      
+      volumes:
+      - name: checkpoint-storage
+        persistentVolumeClaim:
+          claimName: training-checkpoints
+
+---
+# PersistentVolumeClaim for shared checkpoint storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: training-checkpoints
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs
+  resources:
+    requests:
+      storage: 100Gi
