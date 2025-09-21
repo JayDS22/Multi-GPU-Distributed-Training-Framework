@@ -1,0 +1,72 @@
+# Staging Configuration
+# Full validation before production deployment
+
+experiment_name: staging
+seed: 42
+
+# Model configuration
+model:
+  name: resnet50
+  num_classes: 1000
+  pretrained: false
+  checkpoint_path: null
+
+# Training hyperparameters (realistic settings)
+training:
+  batch_size: 32              # Standard batch size
+  epochs: 10                  # Partial training for validation
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  momentum: 0.9
+  gradient_clip: 1.0
+  gradient_accumulation_steps: 1
+  warmup_epochs: 2
+  label_smoothing: 0.1
+
+# Distributed training settings
+distributed:
+  strategy: ddp               # Test both strategies in staging
+  backend: nccl
+  precision: fp16             # Test mixed precision
+  find_unused_parameters: false
+  gradient_as_bucket_view: true
+  static_graph: true
+  cpu_offload: false
+  activation_checkpointing: false
+  sharding_strategy: FULL_SHARD
+
+# Communication optimization (test optimizations)
+optimization:
+  enable_gradient_compression: false  # Test without first
+  compression_ratio: 0.01
+  enable_hierarchical_allreduce: false
+  bucket_size_mb: 25
+  async_communication: true
+  overlap_computation: true
+
+# Checkpoint configuration
+checkpoint:
+  save_dir: ./checkpoints
+  save_frequency: 2           # Save every 2 epochs
+  keep_last_n: 3
+  save_best: true
+  resume_from: null
+
+# Monitoring and logging
+monitoring:
+  log_dir: ./logs
+  tensorboard: true
+  wandb: true                 # Enable W&B in staging
+  wandb_project: distributed-training-staging
+  log_frequency: 10
+  enable_profiling: true
+  alert_webhook: null         # Add webhook for staging alerts
+
+# Data configuration
+data:
+  train_path: ./data/train
+  val_path: ./data/val
+  num_workers: 4
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
