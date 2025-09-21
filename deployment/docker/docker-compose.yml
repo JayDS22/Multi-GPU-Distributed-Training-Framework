@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # Main training service
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: distributed-training:latest
+    container_name: dist-trainer
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NCCL_DEBUG=INFO
+    volumes:
+      - ./data:/workspace/data
+      - ./checkpoints:/workspace/checkpoints
+      - ./logs:/workspace/logs
+      - ./configs:/workspace/configs
+    shm_size: '2gb'
+    command: python scripts/production_train.py --batch-size 32
+    networks:
+      - training-net
+
+  # Development environment
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: distributed-training:dev
+    container_name: dist-trainer-dev
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - .:/workspace
+      - ./data:/workspace/data
+      - ./checkpoints:/workspace/checkpoints
+    ports:
+      - "8888:8888"  # Jupyter
+      - "6006:6006"  # TensorBoard
+    shm_size: '4gb'
+    stdin_open: true
+    tty: true
+    networks:
+      - training-net
+
+  # TensorBoard service
+  tensorboard:
+    image: tensorflow/tensorflow:latest
+    container_name: tensorboard
+    command: tensorboard --logdir=/logs --host=0.0.0.0
+    ports:
+      - "6007:6006"
+    volumes:
+      - ./logs:/logs
+    networks:
+      - training-net
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployment/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      - training-net
+    profiles:
+      - monitoring
+
+  # Grafana dashboard (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - training-net
+    profiles:
+      - monitoring
+
+networks:
+  training-net:
+    driver: bridge
+
+volumes:
+  grafana-storage:
