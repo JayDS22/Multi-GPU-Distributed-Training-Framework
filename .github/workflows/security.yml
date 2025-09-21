@@ -1,226 +1,226 @@
-name: Security Scanning
+# name: Security Scanning
 
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
-  schedule:
-    # Run security scans daily at 2 AM UTC
-    - cron: '0 2 * * *'
+# on:
+#   push:
+#     branches: [ main, develop ]
+#   pull_request:
+#     branches: [ main, develop ]
+#   schedule:
+#     # Run security scans daily at 2 AM UTC
+#     - cron: '0 2 * * *'
 
-jobs:
-  dependency-scan:
-    name: Dependency Vulnerability Scan
-    runs-on: ubuntu-latest
+# jobs:
+#   dependency-scan:
+#     name: Dependency Vulnerability Scan
+#     runs-on: ubuntu-latest
     
-    steps:
-      - uses: actions/checkout@v3
+#     steps:
+#       - uses: actions/checkout@v3
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: '3.10'
       
-      - name: Install dependencies
-        run: |
-          pip install safety pip-audit
+#       - name: Install dependencies
+#         run: |
+#           pip install safety pip-audit
       
-      - name: Run Safety check
-        run: |
-          pip install -r requirements.txt
-          safety check --json --output safety-report.json || true
+#       - name: Run Safety check
+#         run: |
+#           pip install -r requirements.txt
+#           safety check --json --output safety-report.json || true
       
-      - name: Run pip-audit
-        run: |
-          pip-audit --desc --format json --output pip-audit-report.json || true
+#       - name: Run pip-audit
+#         run: |
+#           pip-audit --desc --format json --output pip-audit-report.json || true
       
-      - name: Upload vulnerability reports
-        uses: actions/upload-artifact@v3
-        with:
-          name: vulnerability-reports
-          path: |
-            safety-report.json
-            pip-audit-report.json
+#       - name: Upload vulnerability reports
+#         uses: actions/upload-artifact@v3
+#         with:
+#           name: vulnerability-reports
+#           path: |
+#             safety-report.json
+#             pip-audit-report.json
 
-  code-security-scan:
-    name: Code Security Analysis
-    runs-on: ubuntu-latest
+#   code-security-scan:
+#     name: Code Security Analysis
+#     runs-on: ubuntu-latest
     
-    steps:
-      - uses: actions/checkout@v3
+#     steps:
+#       - uses: actions/checkout@v3
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: '3.10'
       
-      - name: Install bandit
-        run: |
-          pip install bandit[toml]
+#       - name: Install bandit
+#         run: |
+#           pip install bandit[toml]
       
-      - name: Run Bandit
-        run: |
-          bandit -r src/ -f json -o bandit-report.json || true
-          bandit -r src/ -f txt || true
+#       - name: Run Bandit
+#         run: |
+#           bandit -r src/ -f json -o bandit-report.json || true
+#           bandit -r src/ -f txt || true
       
-      - name: Upload Bandit report
-        uses: actions/upload-artifact@v3
-        with:
-          name: bandit-report
-          path: bandit-report.json
+#       - name: Upload Bandit report
+#         uses: actions/upload-artifact@v3
+#         with:
+#           name: bandit-report
+#           path: bandit-report.json
 
-  secret-scan:
-    name: Secret Scanning
-    runs-on: ubuntu-latest
+#   secret-scan:
+#     name: Secret Scanning
+#     runs-on: ubuntu-latest
     
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+#     steps:
+#       - uses: actions/checkout@v3
+#         with:
+#           fetch-depth: 0
       
-      - name: TruffleHog Secret Scan
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --debug --only-verified
+#       - name: TruffleHog Secret Scan
+#         uses: trufflesecurity/trufflehog@main
+#         with:
+#           path: ./
+#           base: ${{ github.event.repository.default_branch }}
+#           head: HEAD
+#           extra_args: --debug --only-verified
 
-  docker-security:
-    name: Docker Image Security Scan
-    runs-on: ubuntu-latest
+#   docker-security:
+#     name: Docker Image Security Scan
+#     runs-on: ubuntu-latest
     
-    steps:
-      - uses: actions/checkout@v3
+#     steps:
+#       - uses: actions/checkout@v3
       
-      - name: Build Docker image
-        run: |
-          docker build -t distributed-training:security-test .
+#       - name: Build Docker image
+#         run: |
+#           docker build -t distributed-training:security-test .
       
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: distributed-training:security-test
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
+#       - name: Run Trivy vulnerability scanner
+#         uses: aquasecurity/trivy-action@master
+#         with:
+#           image-ref: distributed-training:security-test
+#           format: 'sarif'
+#           output: 'trivy-results.sarif'
+#           severity: 'CRITICAL,HIGH'
       
-      - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: 'trivy-results.sarif'
+#       - name: Upload Trivy results to GitHub Security tab
+#         uses: github/codeql-action/upload-sarif@v2
+#         with:
+#           sarif_file: 'trivy-results.sarif'
       
-      - name: Run Grype scanner
-        uses: anchore/scan-action@v3
-        with:
-          image: distributed-training:security-test
-          fail-build: false
-          severity-cutoff: high
+#       - name: Run Grype scanner
+#         uses: anchore/scan-action@v3
+#         with:
+#           image: distributed-training:security-test
+#           fail-build: false
+#           severity-cutoff: high
       
-      - name: Upload Grype results
-        uses: actions/upload-artifact@v3
-        with:
-          name: grype-report
-          path: anchore-reports/
+#       - name: Upload Grype results
+#         uses: actions/upload-artifact@v3
+#         with:
+#           name: grype-report
+#           path: anchore-reports/
 
-  codeql-analysis:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
+#   codeql-analysis:
+#     name: CodeQL Analysis
+#     runs-on: ubuntu-latest
+#     permissions:
+#       actions: read
+#       contents: read
+#       security-events: write
     
-    steps:
-      - uses: actions/checkout@v3
+#     steps:
+#       - uses: actions/checkout@v3
       
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
-        with:
-          languages: python
+#       - name: Initialize CodeQL
+#         uses: github/codeql-action/init@v2
+#         with:
+#           languages: python
       
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+#       - name: Perform CodeQL Analysis
+#         uses: github/codeql-action/analyze@v2
 
-  license-scan:
-    name: License Compliance Check
-    runs-on: ubuntu-latest
+#   license-scan:
+#     name: License Compliance Check
+#     runs-on: ubuntu-latest
     
-    steps:
-      - uses: actions/checkout@v3
+#     steps:
+#       - uses: actions/checkout@v3
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: '3.10'
       
-      - name: Install pip-licenses
-        run: |
-          pip install pip-licenses
-          pip install -r requirements.txt
+#       - name: Install pip-licenses
+#         run: |
+#           pip install pip-licenses
+#           pip install -r requirements.txt
       
-      - name: Check licenses
-        run: |
-          pip-licenses --format=json --output-file=licenses.json
-          pip-licenses --format=markdown --output-file=licenses.md
+#       - name: Check licenses
+#         run: |
+#           pip-licenses --format=json --output-file=licenses.json
+#           pip-licenses --format=markdown --output-file=licenses.md
       
-      - name: Upload license report
-        uses: actions/upload-artifact@v3
-        with:
-          name: license-report
-          path: |
-            licenses.json
-            licenses.md
+#       - name: Upload license report
+#         uses: actions/upload-artifact@v3
+#         with:
+#           name: license-report
+#           path: |
+#             licenses.json
+#             licenses.md
 
-  security-summary:
-    name: Security Summary
-    needs: [dependency-scan, code-security-scan, docker-security, codeql-analysis]
-    runs-on: ubuntu-latest
-    if: always()
+#   security-summary:
+#     name: Security Summary
+#     needs: [dependency-scan, code-security-scan, docker-security, codeql-analysis]
+#     runs-on: ubuntu-latest
+#     if: always()
     
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v3
+#     steps:
+#       - name: Download all artifacts
+#         uses: actions/download-artifact@v3
       
-      - name: Generate security summary
-        run: |
-          echo "# Security Scan Summary" > security-summary.md
-          echo "" >> security-summary.md
-          echo "## Scan Results" >> security-summary.md
-          echo "" >> security-summary.md
+#       - name: Generate security summary
+#         run: |
+#           echo "# Security Scan Summary" > security-summary.md
+#           echo "" >> security-summary.md
+#           echo "## Scan Results" >> security-summary.md
+#           echo "" >> security-summary.md
           
-          if [ -f "vulnerability-reports/safety-report.json" ]; then
-            echo "### Dependency Vulnerabilities (Safety)" >> security-summary.md
-            cat vulnerability-reports/safety-report.json >> security-summary.md
-          fi
+#           if [ -f "vulnerability-reports/safety-report.json" ]; then
+#             echo "### Dependency Vulnerabilities (Safety)" >> security-summary.md
+#             cat vulnerability-reports/safety-report.json >> security-summary.md
+#           fi
           
-          if [ -f "bandit-report/bandit-report.json" ]; then
-            echo "### Code Security (Bandit)" >> security-summary.md
-            echo "Report available in artifacts" >> security-summary.md
-          fi
+#           if [ -f "bandit-report/bandit-report.json" ]; then
+#             echo "### Code Security (Bandit)" >> security-summary.md
+#             echo "Report available in artifacts" >> security-summary.md
+#           fi
           
-          echo "" >> security-summary.md
-          echo "---" >> security-summary.md
-          echo "Generated: $(date)" >> security-summary.md
+#           echo "" >> security-summary.md
+#           echo "---" >> security-summary.md
+#           echo "Generated: $(date)" >> security-summary.md
       
-      - name: Upload security summary
-        uses: actions/upload-artifact@v3
-        with:
-          name: security-summary
-          path: security-summary.md
+#       - name: Upload security summary
+#         uses: actions/upload-artifact@v3
+#         with:
+#           name: security-summary
+#           path: security-summary.md
       
-      - name: Comment on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const fs = require('fs');
-            const summary = fs.readFileSync('security-summary.md', 'utf8');
+#       - name: Comment on PR
+#         if: github.event_name == 'pull_request'
+#         uses: actions/github-script@v6
+#         with:
+#           script: |
+#             const fs = require('fs');
+#             const summary = fs.readFileSync('security-summary.md', 'utf8');
             
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## 🔒 Security Scan Results\n\n${summary}`
-            });
+#             github.rest.issues.createComment({
+#               issue_number: context.issue.number,
+#               owner: context.repo.owner,
+#               repo: context.repo.repo,
+#               body: `## 🔒 Security Scan Results\n\n${summary}`
+#             });
