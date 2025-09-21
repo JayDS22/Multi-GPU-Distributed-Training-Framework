@@ -1,0 +1,176 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: training-config
+  namespace: default
+data:
+  # Production training configuration
+  production.yaml: |
+    experiment_name: production
+    seed: 42
+    
+    model:
+      name: resnet50
+      num_classes: 1000
+      pretrained: false
+    
+    training:
+      batch_size: 64
+      epochs: 100
+      learning_rate: 0.001
+      weight_decay: 0.0001
+      momentum: 0.9
+      gradient_clip: 1.0
+      gradient_accumulation_steps: 1
+      warmup_epochs: 5
+      label_smoothing: 0.1
+    
+    distributed:
+      strategy: fsdp
+      backend: nccl
+      precision: fp16
+      find_unused_parameters: false
+      gradient_as_bucket_view: true
+      static_graph: true
+      cpu_offload: false
+      activation_checkpointing: true
+      sharding_strategy: FULL_SHARD
+    
+    optimization:
+      enable_gradient_compression: true
+      compression_ratio: 0.01
+      enable_hierarchical_allreduce: true
+      bucket_size_mb: 25
+      async_communication: true
+      overlap_computation: true
+    
+    checkpoint:
+      save_dir: /mnt/checkpoints
+      save_frequency: 5
+      keep_last_n: 3
+      save_best: true
+    
+    monitoring:
+      log_dir: /mnt/logs
+      tensorboard: true
+      wandb: false
+      log_frequency: 10
+      enable_profiling: false
+    
+    data:
+      train_path: /mnt/data/train
+      val_path: /mnt/data/val
+      num_workers: 4
+      pin_memory: true
+      prefetch_factor: 2
+      persistent_workers: true
+
+  # Development configuration
+  dev.yaml: |
+    experiment_name: development
+    seed: 42
+    
+    model:
+      name: resnet50
+      num_classes: 1000
+    
+    training:
+      batch_size: 16
+      epochs: 2
+      learning_rate: 0.001
+      gradient_clip: 1.0
+    
+    distributed:
+      strategy: ddp
+      backend: nccl
+      precision: fp32
+    
+    monitoring:
+      tensorboard: true
+      log_frequency: 1
+      enable_profiling: true
+    
+    data:
+      train_path: /mnt/data/train
+      val_path: /mnt/data/val
+      num_workers: 2
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: training-scripts
+  namespace: default
+data:
+  entrypoint.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "Starting distributed training..."
+    echo "RANK: $RANK"
+    echo "WORLD_SIZE: $WORLD_SIZE"
+    echo "MASTER_ADDR: $MASTER_ADDR"
+    
+    # Wait for all pods to be ready
+    sleep 10
+    
+    # Start training
+    python scripts/production_train.py \
+      --config /config/production.yaml \
+      --strategy ${STRATEGY:-ddp} \
+      --batch-size ${BATCH_SIZE:-32} \
+      --epochs ${EPOCHS:-100} \
+      --mixed-precision
+    
+    echo "Training complete!"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitoring-config
+  namespace: default
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    scrape_configs:
+      - job_name: 'distributed-training'
+        static_configs:
+          - targets: ['localhost:8000']
+        metrics_path: '/metrics'
+  
+  grafana-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Distributed Training Metrics",
+        "panels": [
+          {
+            "title": "Training Loss",
+            "targets": [
+              {
+                "expr": "training_loss"
+              }
+            ]
+          },
+          {
+            "title": "GPU Utilization",
+            "targets": [
+              {
+                "expr": "gpu_utilization_percent"
+              }
+            ]
+          },
+          {
+            "title": "Throughput",
+            "targets": [
+              {
+                "expr": "samples_per_second"
+              }
+            ]
+          }
+        ]
+      }
+    }
