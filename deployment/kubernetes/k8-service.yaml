@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: distributed-training-headless
+spec:
+  clusterIP: None
+  selector:
+    app: distributed-training
+  ports:
+  - port: 29500
+    name: master
+    protocol: TCP
+  - port: 6006
+    name: tensorboard
+    protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tensorboard-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: distributed-training
+  ports:
+  - port: 80
+    targetPort: 6006
+    protocol: TCP
+    name: http
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: training-config
+data:
+  production.yaml: |
+    experiment_name: production
+    seed: 42
+    model:
+      name: resnet50
+      num_classes: 1000
+    training:
+      batch_size: 64
+      epochs: 100
+      learning_rate: 0.001
+      gradient_clip: 1.0
+    distributed:
+      strategy: fsdp
+      backend: nccl
+      precision: fp16
+      activation_checkpointing: true
+    monitoring:
+      tensorboard: true
+      log_frequency: 10
