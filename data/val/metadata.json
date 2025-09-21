@@ -1,0 +1,30 @@
+{
+  "dataset_name": "synthetic_val",
+  "num_classes": 10,
+  "num_samples": 200,
+  "samples_per_class": 20,
+  "image_size": [224, 224],
+  "class_names": [
+    "class_000",
+    "class_001",
+    "class_002",
+    "class_003",
+    "class_004",
+    "class_005",
+    "class_006",
+    "class_007",
+    "class_008",
+    "class_009"
+  ],
+  "split": "val",
+  "format": "ImageFolder",
+  "description": "Synthetic validation dataset - Run generate_dummy_data.py to populate",
+  "mean": [0.485, 0.456, 0.406],
+  "std": [0.229, 0.224, 0.225],
+  "transforms": [
+    "Resize(256)",
+    "CenterCrop(224)",
+    "ToTensor()",
+    "Normalize(mean, std)"
+  ]
+}
