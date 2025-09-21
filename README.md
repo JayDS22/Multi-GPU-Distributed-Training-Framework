@@ -381,7 +381,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 Jay Guwalani - jguwalan@umd.edu
 
-Project Link: [https://github.com/jayds22/distributed-training-framework](https://github.com/jayds22/distributed-training-framework)
+Project Link: [https://github.com/JayDS22/Multi-GPU-Distributed-Training-Framework](https://github.com/JayDS22/Multi-GPU-Distributed-Training-Framework/tree/main)
 
 ## 🔬 Research & References
 
