@@ -1,0 +1,93 @@
+# Production Configuration
+# Optimized for performance, reliability, and cost efficiency
+
+experiment_name: production
+seed: 42
+
+# Model configuration
+model:
+  name: resnet50
+  num_classes: 1000
+  pretrained: false
+  checkpoint_path: null
+
+# Training hyperparameters (production-optimized)
+training:
+  batch_size: 64              # Larger batch for efficiency
+  epochs: 100                 # Full training
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  momentum: 0.9
+  gradient_clip: 1.0
+  gradient_accumulation_steps: 1
+  warmup_epochs: 5            # Proper warmup
+  label_smoothing: 0.1        # Better generalization
+
+# Distributed training settings (production)
+distributed:
+  strategy: fsdp              # FSDP for scalability
+  backend: nccl
+  precision: fp16             # Mixed precision for speed
+  find_unused_parameters: false
+  gradient_as_bucket_view: true
+  static_graph: true
+  cpu_offload: false          # Keep in GPU for speed
+  activation_checkpointing: true  # Save memory
+  sharding_strategy: FULL_SHARD
+
+# Communication optimization (all enabled)
+optimization:
+  enable_gradient_compression: true
+  compression_ratio: 0.01
+  enable_hierarchical_allreduce: true
+  bucket_size_mb: 25
+  async_communication: true
+  overlap_computation: true
+
+# Checkpoint configuration (production)
+checkpoint:
+  save_dir: /mnt/checkpoints  # Shared storage
+  save_frequency: 5           # Every 5 epochs
+  keep_last_n: 5              # Keep more checkpoints
+  save_best: true
+  resume_from: null
+
+# Monitoring and logging (production)
+monitoring:
+  log_dir: /mnt/logs          # Shared storage
+  tensorboard: true
+  wandb: true
+  wandb_project: distributed-training-production
+  log_frequency: 10
+  enable_profiling: false     # Disable profiling overhead
+  alert_webhook: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+
+# Data configuration (production)
+data:
+  train_path: /mnt/data/train  # Production data path
+  val_path: /mnt/data/val
+  num_workers: 8               # More workers
+  pin_memory: true
+  prefetch_factor: 4           # More prefetching
+  persistent_workers: true     # Reuse workers
+
+# Production-specific settings
+production:
+  # Auto-recovery settings
+  auto_recovery:
+    enabled: true
+    max_retries: 3
+    retry_delay_seconds: 60
+  
+  # Health monitoring
+  health_checks:
+    enabled: true
+    check_interval_seconds: 60
+    gpu_memory_threshold: 0.95
+    iteration_time_threshold_ms: 1000
+  
+  # Resource limits
+  limits:
+    max_training_hours: 72
+    checkpoint_size_gb: 50
+    log_retention_days: 30
