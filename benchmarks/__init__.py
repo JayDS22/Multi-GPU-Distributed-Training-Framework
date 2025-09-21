@@ -2,6 +2,7 @@
 """
 Benchmarking suite for distributed training
 
+
 This package contains performance benchmarking tools:
 - Scalability benchmarks (1-256 GPUs)
 - Communication overhead analysis
