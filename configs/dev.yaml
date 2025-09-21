@@ -1,0 +1,72 @@
+# Development Configuration
+# Fast iteration, debugging enabled, minimal resources
+
+experiment_name: development
+seed: 42
+
+# Model configuration
+model:
+  name: resnet50
+  num_classes: 1000
+  pretrained: false
+  checkpoint_path: null
+
+# Training hyperparameters (optimized for quick iteration)
+training:
+  batch_size: 16              # Small batch for fast testing
+  epochs: 2                   # Just 2 epochs for dev
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  momentum: 0.9
+  gradient_clip: 1.0
+  gradient_accumulation_steps: 1
+  warmup_epochs: 0            # No warmup in dev
+  label_smoothing: 0.0        # Disabled for simplicity
+
+# Distributed training settings
+distributed:
+  strategy: ddp               # DDP for simplicity
+  backend: nccl
+  precision: fp32             # FP32 for easier debugging
+  find_unused_parameters: false
+  gradient_as_bucket_view: true
+  static_graph: true
+  cpu_offload: false
+  activation_checkpointing: false
+  sharding_strategy: FULL_SHARD
+
+# Communication optimization (minimal in dev)
+optimization:
+  enable_gradient_compression: false
+  compression_ratio: 0.01
+  enable_hierarchical_allreduce: false
+  bucket_size_mb: 25
+  async_communication: false
+  overlap_computation: false
+
+# Checkpoint configuration
+checkpoint:
+  save_dir: ./checkpoints
+  save_frequency: 1           # Save every epoch
+  keep_last_n: 2              # Keep only last 2
+  save_best: true
+  resume_from: null
+
+# Monitoring and logging
+monitoring:
+  log_dir: ./logs
+  tensorboard: true           # Enable TensorBoard
+  wandb: false
+  wandb_project: null
+  log_frequency: 1            # Log every step
+  enable_profiling: true      # Enable profiling in dev
+  alert_webhook: null
+
+# Data configuration
+data:
+  train_path: ./data/train
+  val_path: ./data/val
+  num_workers: 2              # Fewer workers for dev
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: false   # Restart workers each epoch
