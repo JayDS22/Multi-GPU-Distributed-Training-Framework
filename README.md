@@ -6,198 +6,142 @@
 
 A production-ready distributed training framework implementing DDP (Distributed Data Parallel) and FSDP (Fully Sharded Data Parallel) from scratch, optimized for ByteDance/Scale-focused roles. Features comprehensive communication optimization, mixed precision training, and scalability benchmarks from 1-256 GPUs.
 
-## 🏗️ Architecture
+## Architecture
 
 ### System Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                   Distributed Training Framework                 │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                   │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │   DDP Mode   │  │  FSDP Mode   │  │ Mixed Prec.  │          │
-│  │              │  │              │  │              │          │
-│  │ • AllReduce  │  │ • Sharding   │  │ • FP16/BF16  │          │
-│  │ • Gradient   │  │ • Reduce-    │  │ • Gradient   │          │
-│  │   Bucketing  │  │   Scatter    │  │   Scaling    │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-│                                                                   │
-├─────────────────────────────────────────────────────────────────┤
-│              Communication Optimization Layer                     │
-│                                                                   │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │  Gradient    │  │  Hierarchical│  │   Async      │          │
-│  │ Compression  │  │  AllReduce   │  │ Communication│          │
-│  │              │  │              │  │              │          │
-│  │ • Top-K      │  │ • Intra-node │  │ • Compute/   │          │
-│  │   Sparsity   │  │ • Inter-node │  │   Comm       │          │
-│  │              │  │              │  │   Overlap    │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-│                                                                   │
-├─────────────────────────────────────────────────────────────────┤
-│                    Hardware Layer                                │
-│                                                                   │
-│     GPU 0    GPU 1    ...    GPU N                               │
-│       │        │              │                                  │
-│     ┌─┴────────┴──────────────┴─┐                               │
-│     │      NCCL Backend          │                               │
-│     └────────────────────────────┘                               │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph FW[Distributed Training Framework]
+        DDP[DDP Mode<br/>AllReduce, Gradient Bucketing]
+        FSDP[FSDP Mode<br/>Sharding, Reduce-Scatter]
+        MP[Mixed Precision<br/>FP16/BF16, Gradient Scaling]
+    end
+    subgraph COMM[Communication Optimization]
+        GC[Gradient Compression<br/>Top-K Sparsity]
+        HAR[Hierarchical AllReduce<br/>Intra-node, Inter-node]
+        ASYNC[Async Communication<br/>Compute / Comm Overlap]
+    end
+    subgraph HW[Hardware Layer]
+        G0[GPU 0]
+        G1[GPU 1]
+        GN[GPU N]
+        NCCL[NCCL Backend]
+    end
+    FW --> COMM --> HW
+    G0 --> NCCL
+    G1 --> NCCL
+    GN --> NCCL
 ```
 
 ### DDP Communication Pattern
 
-```
-Training Step Flow:
-┌──────────┐     ┌──────────┐     ┌──────────┐
-│  GPU 0   │     │  GPU 1   │     │  GPU N   │
-│          │     │          │     │          │
-│ Forward  │────▶│ Forward  │────▶│ Forward  │
-│ Backward │     │ Backward │     │ Backward │
-│    │     │     │    │     │     │    │     │
-│    ▼     │     │    ▼     │     │    ▼     │
-│ Gradient │     │ Gradient │     │ Gradient │
-└────┬─────┘     └────┬─────┘     └────┬─────┘
-     │                │                │
-     └────────────────┼────────────────┘
-                      ▼
-              ┌───────────────┐
-              │   AllReduce   │
-              │   (Average)   │
-              └───────┬───────┘
-                      │
-     ┌────────────────┼────────────────┐
-     ▼                ▼                ▼
-┌──────────┐     ┌──────────┐     ┌──────────┐
-│  Update  │     │  Update  │     │  Update  │
-│ Weights  │     │ Weights  │     │ Weights  │
-└──────────┘     └──────────┘     └──────────┘
+```mermaid
+flowchart TD
+    G0F[GPU 0 Forward + Backward] --> G0G[GPU 0 Gradient]
+    G1F[GPU 1 Forward + Backward] --> G1G[GPU 1 Gradient]
+    GNF[GPU N Forward + Backward] --> GNG[GPU N Gradient]
+    G0G --> AR[AllReduce<br/>Average]
+    G1G --> AR
+    GNG --> AR
+    AR --> U0[Update Weights GPU 0]
+    AR --> U1[Update Weights GPU 1]
+    AR --> UN[Update Weights GPU N]
 ```
 
 ### FSDP Sharding Strategy
 
-```
-Model Sharding Across GPUs:
-                Full Model
-                     │
-        ┌────────────┼────────────┐
-        ▼            ▼            ▼
-    ┌───────┐    ┌───────┐    ┌───────┐
-    │ Shard │    │ Shard │    │ Shard │
-    │   1   │    │   2   │    │   3   │
-    └───┬───┘    └───┬───┘    └───┬───┘
-        │            │            │
-     GPU 0        GPU 1        GPU 2
-
-Forward Pass (All-Gather):
-    ┌───────────────────────────┐
-    │    Gather All Shards      │
-    └─────────┬─────────────────┘
-              ▼
-    ┌─────────────────┐
-    │  Compute Layer  │
-    └─────────────────┘
-
-Backward Pass (Reduce-Scatter):
-    ┌─────────────────┐
-    │  Compute Grads  │
-    └────────┬────────┘
-             ▼
-    ┌───────────────────────────┐
-    │   Reduce-Scatter Grads    │
-    └─────────┬─────────────────┘
-              ▼
-         Update Shard
+```mermaid
+flowchart TD
+    FM[Full Model] --> S1[Shard 1<br/>GPU 0]
+    FM --> S2[Shard 2<br/>GPU 1]
+    FM --> S3[Shard 3<br/>GPU 2]
+    S1 --> AG[Forward Pass<br/>All-Gather Shards]
+    S2 --> AG
+    S3 --> AG
+    AG --> CL[Compute Layer]
+    CL --> BG[Backward Pass<br/>Compute Grads]
+    BG --> RS[Reduce-Scatter Grads]
+    RS --> US[Update Shard]
 ```
 
 ### Communication Optimization
 
-```
-Gradient Compression (Top-K):
-Original Gradient [1.2, -0.3, 0.8, -0.1, 2.1, ...]
-                              ▼
-             Select Top 10% by Magnitude
-                              ▼
-Compressed: indices=[0,2,4,...], values=[1.2,0.8,2.1,...]
-                              ▼
-                   AllReduce Compressed
-                              ▼
-                        Decompress
-
-Hierarchical AllReduce:
-┌─────────────────────────────────────────┐
-│            Node 0          Node 1       │
-│  GPU0 GPU1 GPU2 GPU3  GPU4 GPU5 ...    │
-│    │   │   │   │       │   │           │
-│    └───┴───┴───┘       └───┴───┘       │ 1. Intra-node reduce
-│         │                   │           │    (Fast: NVLink)
-│         └───────────────────┘           │ 2. Inter-node allreduce
-│                 │                       │    (Slower: Network)
-│         ┌───────┴───────┐               │
-│         │   Broadcast   │               │ 3. Intra-node broadcast
-│    ┌────┴───┬───┬───┐                   │
-│  GPU0 GPU1 GPU2 GPU3 ...                │
-└─────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    OG[Original Gradient<br/>1.2, -0.3, 0.8, -0.1, 2.1, ...] --> TOP[Select Top 10% by Magnitude]
+    TOP --> COMP[Compressed<br/>indices=0,2,4 values=1.2,0.8,2.1]
+    COMP --> ARC[AllReduce Compressed]
+    ARC --> DEC[Decompress]
+    subgraph HAR[Hierarchical AllReduce]
+        N0[Node 0: GPU0..3]
+        N1[Node 1: GPU4..7]
+        IR[1. Intra-node reduce<br/>NVLink, fast]
+        IAR[2. Inter-node AllReduce<br/>Network, slower]
+        IB[3. Intra-node broadcast]
+        N0 --> IR
+        N1 --> IR
+        IR --> IAR --> IB
+    end
 ```
 
-## 🚀 Features
+## Features
 
-### ✅ Core Implementation (Complete)
+### Core Implementation (Complete)
 
 - **Multiple Distributed Strategies**
-  - ✅ DDP (Distributed Data Parallel) with gradient bucketing
-  - ✅ FSDP (Fully Sharded Data Parallel) with CPU offloading
-  - ✅ Automatic strategy selection based on model size
-  - ✅ Hybrid sharding for multi-node setups
+  - DDP (Distributed Data Parallel) with gradient bucketing
+  - FSDP (Fully Sharded Data Parallel) with CPU offloading
+  - Automatic strategy selection based on model size
+  - Hybrid sharding for multi-node setups
 
 - **Communication Optimization**
-  - ✅ Top-K gradient compression (up to 100x reduction)
-  - ✅ Hierarchical all-reduce for multi-node training
-  - ✅ Gradient bucketing to reduce communication overhead
-  - ✅ Async communication with computation overlap
-  - ✅ Zero-copy collectives
+  - Top-K gradient compression (up to 100x reduction)
+  - Hierarchical all-reduce for multi-node training
+  - Gradient bucketing to reduce communication overhead
+  - Async communication with computation overlap
+  - Zero-copy collectives
 
 - **Mixed Precision Training**
-  - ✅ FP16/BF16 automatic mixed precision
-  - ✅ Dynamic loss scaling
-  - ✅ Gradient clipping for stability
-  - ✅ FSDP-compatible mixed precision
+  - FP16/BF16 automatic mixed precision
+  - Dynamic loss scaling
+  - Gradient clipping for stability
+  - FSDP-compatible mixed precision
 
 - **Advanced Features**
-  - ✅ Activation checkpointing for memory optimization
-  - ✅ CPU offloading for large models
-  - ✅ Dynamic batch size selection
-  - ✅ Automatic GPU memory tuning
+  - Activation checkpointing for memory optimization
+  - CPU offloading for large models
+  - Dynamic batch size selection
+  - Automatic GPU memory tuning
 
-### 🎯 Production Features (Complete)
+### Production Features (Complete)
 
 - **Monitoring & Observability**
-  - ✅ Real-time TensorBoard integration
-  - ✅ Per-rank metrics tracking
-  - ✅ GPU utilization monitoring
-  - ✅ Communication overhead profiling
-  - ✅ Throughput and latency metrics
+  - Real-time TensorBoard integration
+  - Per-rank metrics tracking
+  - GPU utilization monitoring
+  - Communication overhead profiling
+  - Throughput and latency metrics
 
 - **Fault Tolerance**
-  - ✅ Checkpoint/resume functionality
-  - ✅ Automatic checkpoint cleanup
-  - ✅ Best model tracking
-  - ✅ State recovery on failure
+  - Checkpoint/resume functionality
+  - Automatic checkpoint cleanup
+  - Best model tracking
+  - State recovery on failure
 
 - **Deployment**
-  - ✅ Docker containerization
-  - ✅ Kubernetes StatefulSets configuration
-  - ✅ Multi-node orchestration
-  - ✅ Auto-scaling support
+  - Docker containerization
+  - Kubernetes StatefulSets configuration
+  - Multi-node orchestration
+  - Auto-scaling support
 
 - **Scalability**
-  - ✅ Linear scaling up to 64 GPUs (>85% efficiency)
-  - ✅ Tested on 1-256 GPU configurations
-  - ✅ Comprehensive benchmarking suite
-  - ✅ Scaling efficiency tracking
+  - Linear scaling up to 64 GPUs (>85% efficiency)
+  - Tested on 1-256 GPU configurations
+  - Comprehensive benchmarking suite
+  - Scaling efficiency tracking
 
-## 📋 Requirements
+## Requirements
 
 - Python 3.8+
 - PyTorch 2.0+
@@ -205,7 +149,7 @@ Hierarchical AllReduce:
 - NCCL 2.15+
 - 1-256 NVIDIA GPUs
 
-## 🔧 Installation
+## Installation
 
 ```bash
 # Clone the repository
@@ -229,7 +173,7 @@ docker build -t dist-training .
 docker run --gpus all -it --ipc=host dist-training
 ```
 
-## 💻 Usage
+## Usage
 
 ### Quick Start - Production Training
 
@@ -406,7 +350,7 @@ optimized_grad = comm_opt.hierarchical_all_reduce(
 )
 ```
 
-## 📊 Benchmarks
+## Benchmarks
 
 ### Scalability Results
 
@@ -453,7 +397,7 @@ python run_benchmark.py \
 | Hierarchical AR   | 89.2             | 12.1         | 3.7x    |
 | Bucketing         | 34.1             | 23.4         | 1.9x    |
 
-## 🧪 Testing
+## Testing
 
 Run the test suite:
 
@@ -468,7 +412,7 @@ pytest test_distributed.py::TestDistributedTraining::test_compression -v
 pytest --cov=. test_distributed.py
 ```
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 distributed-training-framework/
@@ -499,20 +443,20 @@ distributed-training-framework/
     └── .gitignore                   # Git ignore
 ```
 
-## 📊 Key Metrics & Benchmarks
+## Key Metrics & Benchmarks
 
-### Performance Targets ✅ MET
+### Performance Targets  MET
 
 | Metric | Target | Achieved | Status |
 |--------|--------|----------|--------|
-| **Training Throughput** | >1000 samples/s/GPU | 1,150 samples/s/GPU | ✅ |
-| **Scaling Efficiency @ 16 GPUs** | >85% | 89% | ✅ |
-| **Communication Overhead** | <15% | 12.3% | ✅ |
-| **GPU Memory Efficiency** | >80% utilization | 87% | ✅ |
+| **Training Throughput** | >1000 samples/s/GPU | 1,150 samples/s/GPU |  |
+| **Scaling Efficiency @ 16 GPUs** | >85% | 89% |  |
+| **Communication Overhead** | <15% | 12.3% |  |
+| **GPU Memory Efficiency** | >80% utilization | 87% |  |
 
 ### Measured Performance
 
-## 📈 Performance Tips
+## Performance Tips
 
 1. **Choose the Right Strategy**
    - DDP: Best for models that fit in GPU memory
@@ -531,7 +475,7 @@ distributed-training-framework/
    - Always enable for 2x speedup on modern GPUs
    - Use BF16 on A100/H100 for better numerical stability
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -541,23 +485,23 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - PyTorch team for excellent distributed training APIs
 - NVIDIA for NCCL backend
 - ByteDance and Scale AI for inspiration on production ML systems
 
-## 📧 Contact
+## Contact
 
 Your Name - your.email@example.com
 
 Project Link: [https://github.com/yourusername/distributed-training-framework](https://github.com/yourusername/distributed-training-framework)
 
-## 🔬 Research & References
+## Research & References
 
 - [PyTorch Distributed: Experiences on Accelerating Data Parallel Training](https://arxiv.org/abs/2006.15704)
 - [ZeRO: Memory Optimizations Toward Training Trillion Parameter Models](https://arxiv.org/abs/1910.02054)
@@ -565,4 +509,4 @@ Project Link: [https://github.com/yourusername/distributed-training-framework](h
 
 ---
 
-**Built for production ML at scale** 🚀
+**Built for production ML at scale** 
